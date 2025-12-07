@@ -4,7 +4,8 @@ import { ParticleConfig, ParticleMode } from '../types';
 import { 
   Settings2, X, Activity, Star, Circle, Heart, Wind, Zap, 
   Sword, Shield, Hourglass, Disc, Swords, Dna, Orbit, Smile,
-  Flame, CloudRain, Binary, Aperture, Feather, Bomb, Sparkles, Ghost, Snowflake
+  Flame, CloudRain, Binary, Aperture, Feather, Bomb, Sparkles, Ghost, Snowflake,
+  Mic, Type, Network, Rocket
 } from 'lucide-react';
 
 interface ControlsProps {
@@ -46,12 +47,18 @@ const Controls: React.FC<ControlsProps> = ({ config, activateMode, setConfig }) 
     { id: ParticleMode.MATRIX, icon: <Binary size={18} />, label: 'Matrix' },
     { id: ParticleMode.RAIN, icon: <CloudRain size={18} />, label: 'Rain' },
     
-    // Visual Feast (New)
+    // Visual Feast
     { id: ParticleMode.ANGEL, icon: <Feather size={18} />, label: 'Angel' },
     { id: ParticleMode.SORCERER, icon: <Sparkles size={18} />, label: 'Magic' },
     { id: ParticleMode.TNT, icon: <Bomb size={18} />, label: 'TNT' },
     { id: ParticleMode.SNOW, icon: <Snowflake size={18} />, label: 'Snow' },
     { id: ParticleMode.GHOST, icon: <Ghost size={18} />, label: 'Ghost' },
+    
+    // Advanced Tech
+    { id: ParticleMode.AUDIO_WAVE, icon: <Mic size={18} />, label: 'Audio' },
+    { id: ParticleMode.TEXT, icon: <Type size={18} />, label: 'Text' },
+    { id: ParticleMode.NETWORK, icon: <Network size={18} />, label: 'Neural' },
+    { id: ParticleMode.FIREWORKS, icon: <Rocket size={18} />, label: 'Fireworks' },
   ];
 
   return (

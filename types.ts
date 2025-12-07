@@ -26,6 +26,12 @@ export enum ParticleMode {
   TNT = 'TNT',         // Explosive debris with rect rendering
   SNOW = 'SNOW',       // Snowflakes with text rendering
   GHOST = 'GHOST',     // Spooky trails
+
+  // Advanced Tech & Physics Modes
+  AUDIO_WAVE = 'AUDIO_WAVE', // Microphone reactive
+  TEXT = 'TEXT',             // Custom text shape
+  NETWORK = 'NETWORK',       // Constellation/Neural net
+  FIREWORKS = 'FIREWORKS',   // Rocket simulation
 }
 
 export interface ParticleConfig {
@@ -34,6 +40,7 @@ export interface ParticleConfig {
   particleSize: number;
   glowIntensity: number;
   mode: ParticleMode;
+  customText?: string;
 }
 
 export interface Point {

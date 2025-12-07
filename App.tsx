@@ -12,6 +12,7 @@ const App: React.FC = () => {
     particleSize: 2.5,
     glowIntensity: 15,
     mode: ParticleMode.SWARM,
+    customText: 'HELLO' // Default text
   });
 
   const [command, setCommand] = useState('');
@@ -20,7 +21,7 @@ const App: React.FC = () => {
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Auto-Tune System: Sets ideal parameters for each mode
-  const activateMode = (mode: ParticleMode) => {
+  const activateMode = (mode: ParticleMode, extraData?: any) => {
     let newConfig: Partial<ParticleConfig> = { mode };
 
     switch (mode) {
@@ -50,17 +51,14 @@ const App: React.FC = () => {
         newConfig = { ...newConfig, particleCount: 1800, baseSpeed: 1.8, glowIntensity: 20, particleSize: 2.5 };
         break;
         
-      // Visual Feast (New Modes)
+      // Visual Feast
       case ParticleMode.ANGEL:
-        // Fewer particles, but larger drawing (feathers)
         newConfig = { ...newConfig, particleCount: 1200, baseSpeed: 1.0, glowIntensity: 25, particleSize: 2.0 };
         break;
       case ParticleMode.SORCERER:
-        // Render text, so reduce count for performance
         newConfig = { ...newConfig, particleCount: 800, baseSpeed: 1.2, glowIntensity: 20, particleSize: 4.0 };
         break;
       case ParticleMode.TNT:
-        // Debris
         newConfig = { ...newConfig, particleCount: 1000, baseSpeed: 2.0, glowIntensity: 30, particleSize: 3.0 };
         break;
       case ParticleMode.SNOW:
@@ -70,8 +68,24 @@ const App: React.FC = () => {
         newConfig = { ...newConfig, particleCount: 2000, baseSpeed: 1.0, glowIntensity: 15, particleSize: 5.0 };
         break;
 
+      // New Advanced Modes
+      case ParticleMode.NETWORK:
+        // Needs fewer particles for O(N^2) line drawing
+        newConfig = { ...newConfig, particleCount: 300, baseSpeed: 0.5, glowIntensity: 20, particleSize: 3.0 };
+        break;
+      case ParticleMode.TEXT:
+        // High count to fill letters
+        newConfig = { ...newConfig, particleCount: 3000, baseSpeed: 1.0, glowIntensity: 10, particleSize: 2.0 };
+        if (extraData) newConfig.customText = extraData;
+        break;
+      case ParticleMode.AUDIO_WAVE:
+        newConfig = { ...newConfig, particleCount: 1024, baseSpeed: 1.0, glowIntensity: 15, particleSize: 3.0 };
+        break;
+      case ParticleMode.FIREWORKS:
+        newConfig = { ...newConfig, particleCount: 1500, baseSpeed: 1.0, glowIntensity: 25, particleSize: 2.5 };
+        break;
+
       default:
-        // Reset defaults
         newConfig = { ...newConfig, particleSize: 2.5 };
         break;
     }
@@ -89,9 +103,20 @@ const App: React.FC = () => {
 
   const handleCommandSubmit = (e?: React.FormEvent) => {
     e?.preventDefault();
-    const cmd = command.toLowerCase().trim();
+    const cmd = command.trim(); // Keep case for text input
+    const lowerCmd = cmd.toLowerCase();
     
-    switch (cmd) {
+    // Check for "text:" prefix
+    if (lowerCmd.startsWith('text:')) {
+       const textContent = cmd.substring(5).trim();
+       if (textContent) {
+         activateMode(ParticleMode.TEXT, textContent);
+       }
+       setCommand('');
+       return;
+    }
+
+    switch (lowerCmd) {
       // Basic Shapes
       case 'swarm': activateMode(ParticleMode.SWARM); break;
       case 'vortex': activateMode(ParticleMode.VORTEX); break;
@@ -130,23 +155,27 @@ const App: React.FC = () => {
       case 'rain': 
       case 'storm': activateMode(ParticleMode.RAIN); break;
 
-      // New Visual Feast
+      // Visual Feast
       case 'angel': 
-      case 'wing': 
-      case 'fly': activateMode(ParticleMode.ANGEL); break;
+      case 'wing': activateMode(ParticleMode.ANGEL); break;
       case 'sorcerer': 
-      case 'magic': 
-      case 'rune': 
-      case 'spell': activateMode(ParticleMode.SORCERER); break;
+      case 'magic': activateMode(ParticleMode.SORCERER); break;
       case 'tnt': 
-      case 'bomb': 
-      case 'boom': activateMode(ParticleMode.TNT); break;
+      case 'bomb': activateMode(ParticleMode.TNT); break;
       case 'snow': 
-      case 'winter': 
-      case 'cold': activateMode(ParticleMode.SNOW); break;
+      case 'winter': activateMode(ParticleMode.SNOW); break;
       case 'ghost': 
-      case 'boo': 
-      case 'spirit': activateMode(ParticleMode.GHOST); break;
+      case 'boo': activateMode(ParticleMode.GHOST); break;
+
+      // New Advanced
+      case 'audio':
+      case 'mic':
+      case 'music': activateMode(ParticleMode.AUDIO_WAVE); break;
+      case 'network':
+      case 'neural':
+      case 'connect': activateMode(ParticleMode.NETWORK); break;
+      case 'fireworks':
+      case 'rocket': activateMode(ParticleMode.FIREWORKS); break;
 
       case 'supernova': 
       case 'explode': triggerSupernova(); break;
@@ -206,7 +235,7 @@ const App: React.FC = () => {
           Lumina Touch System
         </h1>
         <p className="text-white/30 text-[10px] tracking-widest uppercase">
-          Try typing: 'Angel', 'Sorcerer', 'TNT', 'Snow'
+          Try typing: 'text: LIGHT' or 'network'
         </p>
       </div>
 
@@ -228,7 +257,7 @@ const App: React.FC = () => {
             onChange={(e) => setCommand(e.target.value)}
             onFocus={() => setShowInput(true)}
             onBlur={() => setShowInput(false)}
-            placeholder="Command (e.g., 'angel', 'tnt')..."
+            placeholder="Command (e.g., 'text: HELLO', 'audio')..."
             className="block w-full pl-10 pr-10 py-3 border border-white/10 rounded-lg leading-5 bg-black/80 text-white placeholder-gray-500 focus:outline-none focus:bg-black/90 focus:border-green-500/50 focus:ring-1 focus:ring-green-500/50 sm:text-sm shadow-2xl backdrop-blur-md transition-all"
             autoComplete="off"
           />

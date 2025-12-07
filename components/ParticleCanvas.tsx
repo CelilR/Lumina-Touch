@@ -1,5 +1,5 @@
 
-import React, { useRef, useEffect, useCallback } from 'react';
+import React, { useRef, useEffect, useCallback, useState } from 'react';
 import { ParticleConfig, ParticleMode, Point } from '../types';
 
 interface ParticleCanvasProps {
@@ -11,6 +11,11 @@ enum AnimationState {
   NORMAL = 'NORMAL',
   GATHERING = 'GATHERING',
   EXPLODING = 'EXPLODING'
+}
+
+enum FireworkState {
+  ROCKET = 'ROCKET',
+  PARTICLE = 'PARTICLE'
 }
 
 // Runes for Sorcerer mode
@@ -35,6 +40,11 @@ class Particle {
   duelTeam: 0 | 1; 
   initialX: number; 
 
+  // Fireworks specific
+  fwState: FireworkState;
+  life: number;
+  hue: number;
+
   constructor(width: number, height: number, size: number) {
     this.x = Math.random() * width;
     this.y = Math.random() * height;
@@ -50,6 +60,11 @@ class Particle {
     this.duelTeam = Math.random() > 0.5 ? 0 : 1;
     this.char = '';
     this.rotation = Math.random() * 360;
+    
+    // Fireworks defaults
+    this.fwState = FireworkState.PARTICLE;
+    this.life = 1.0;
+    this.hue = 0;
   }
 
   // Assign a random character based on mode
@@ -70,29 +85,67 @@ class Particle {
     this.vy = Math.sin(angle) * force;
   }
 
-  updateColor(mode: ParticleMode, index: number, total: number) {
+  // Reset particle to act as a firework rocket
+  resetFirework(width: number, height: number) {
+    this.x = Math.random() * width;
+    this.y = height;
+    this.vx = (Math.random() - 0.5) * 4;
+    this.vy = -(15 + Math.random() * 10); // Shoot up
+    this.fwState = FireworkState.ROCKET;
+    this.life = 1.0;
+    this.hue = Math.random() * 360;
+    this.radius = 3;
+  }
+
+  updateColor(mode: ParticleMode, index: number, total: number, audioData?: number) {
     const randomAlpha = Math.random() * 0.5 + 0.5;
 
     switch (mode) {
+      case ParticleMode.FIREWORKS:
+        if (this.fwState === FireworkState.ROCKET) {
+           this.currentColor = `hsla(${this.hue}, 100%, 70%, 1)`;
+        } else {
+           this.currentColor = `hsla(${this.hue}, 100%, 60%, ${this.life})`;
+        }
+        break;
+
+      case ParticleMode.NETWORK:
+        // Cyberpunk Cyan/Blue
+        this.currentColor = `rgba(0, 255, 255, ${randomAlpha})`; 
+        break;
+
+      case ParticleMode.TEXT:
+        // Glowing Neon Green/White
+        this.currentColor = `rgba(200, 255, 200, ${randomAlpha})`;
+        break;
+
+      case ParticleMode.AUDIO_WAVE:
+        // React color to frequency if available
+        if (audioData !== undefined) {
+          const hue = (index / total * 360) + (audioData); 
+          const l = 50 + (audioData / 255) * 50;
+          this.currentColor = `hsla(${hue}, 80%, ${l}%, ${randomAlpha})`;
+        } else {
+          this.currentColor = `rgba(255, 100, 100, ${randomAlpha})`;
+        }
+        break;
+
       case ParticleMode.TNT:
-        // Explosion colors: Yellow -> Orange -> Red -> Black smoke
         const life = Math.random();
-        if (life > 0.9) this.currentColor = `rgba(255, 255, 200, 1)`; // Spark white
-        else if (life > 0.6) this.currentColor = `rgba(255, 200, 0, ${randomAlpha})`; // Yellow
-        else if (life > 0.3) this.currentColor = `rgba(255, 60, 0, ${randomAlpha})`; // Orange
-        else this.currentColor = `rgba(100, 100, 100, ${randomAlpha * 0.5})`; // Smoke
+        if (life > 0.9) this.currentColor = `rgba(255, 255, 200, 1)`; 
+        else if (life > 0.6) this.currentColor = `rgba(255, 200, 0, ${randomAlpha})`; 
+        else if (life > 0.3) this.currentColor = `rgba(255, 60, 0, ${randomAlpha})`; 
+        else this.currentColor = `rgba(100, 100, 100, ${randomAlpha * 0.5})`; 
         break;
 
       case ParticleMode.SORCERER:
-        // Mystic Neon Purple/Cyan
         const magic = index % 3;
-        if (magic === 0) this.currentColor = `rgba(0, 255, 255, ${randomAlpha})`; // Cyan
-        else if (magic === 1) this.currentColor = `rgba(180, 50, 255, ${randomAlpha})`; // Purple
-        else this.currentColor = `rgba(255, 200, 100, ${randomAlpha})`; // Gold
+        if (magic === 0) this.currentColor = `rgba(0, 255, 255, ${randomAlpha})`; 
+        else if (magic === 1) this.currentColor = `rgba(180, 50, 255, ${randomAlpha})`; 
+        else this.currentColor = `rgba(255, 200, 100, ${randomAlpha})`; 
         break;
 
       case ParticleMode.ANGEL:
-        // Holy White/Gold
         const isGold = index % 10 === 0;
         this.currentColor = isGold 
           ? `rgba(255, 215, 0, ${randomAlpha})` 
@@ -104,10 +157,9 @@ class Particle {
         break;
 
       case ParticleMode.GHOST:
-        this.currentColor = `rgba(150, 255, 200, ${randomAlpha * 0.3})`; // Ectoplasm green
+        this.currentColor = `rgba(150, 255, 200, ${randomAlpha * 0.3})`;
         break;
 
-      // ... Existing Colors ...
       case ParticleMode.DUEL:
         this.currentColor = this.duelTeam === 0 ? `rgba(0, 200, 255, ${randomAlpha})` : `rgba(255, 60, 0, ${randomAlpha})`;
         break;
@@ -154,12 +206,22 @@ class Particle {
     totalParticles: number,
     speedMulti: number,
     animState: AnimationState,
-    time: number
+    time: number,
+    textPoints: Point[], // New: Points generated from text scanning
+    audioData: Uint8Array | null // New: Audio frequency data
   ) {
     let destX = target.x;
     let destY = target.y;
 
-    this.updateColor(mode, index, totalParticles);
+    // Get specific audio value for this particle if enabled
+    let myAudioVal = 0;
+    if (audioData) {
+        const binSize = Math.floor(audioData.length / totalParticles);
+        const idx = Math.floor(index * (audioData.length / totalParticles)); 
+        myAudioVal = audioData[idx % audioData.length];
+    }
+
+    this.updateColor(mode, index, totalParticles, audioData ? myAudioVal : undefined);
 
     // --- Supernova Logic ---
     if (animState === AnimationState.GATHERING) {
@@ -185,41 +247,111 @@ class Particle {
 
     // --- Special Physics Modes ---
 
-    if (mode === ParticleMode.TNT) {
-      // "Spark Fountain" physics
-      // Particles emit from mouse and fall with gravity
+    if (mode === ParticleMode.FIREWORKS) {
+      // Rocket Logic
+      if (this.fwState === FireworkState.ROCKET) {
+        this.x += this.vx;
+        this.y += this.vy;
+        this.vy += 0.2; // Gravity
+        
+        // Explode condition
+        if (this.vy >= 0 || Math.random() > 0.98) {
+          this.fwState = FireworkState.PARTICLE;
+          const explodeForce = Math.random() * 10;
+          const angle = Math.random() * Math.PI * 2;
+          this.vx = Math.cos(angle) * explodeForce;
+          this.vy = Math.sin(angle) * explodeForce;
+        }
+      } else {
+        // Explosion particle logic
+        this.x += this.vx;
+        this.y += this.vy;
+        this.vy += 0.1; // Gravity
+        this.vx *= 0.95;
+        this.vy *= 0.95;
+        this.life -= 0.015;
+
+        if (this.life <= 0 || this.y > height) {
+          this.resetFirework(width, height);
+        }
+      }
+      return;
+    }
+
+    if (mode === ParticleMode.TEXT) {
+      if (textPoints.length > 0) {
+        const pt = textPoints[index % textPoints.length];
+        // Center text on screen
+        destX = pt.x + (width / 2);
+        destY = pt.y + (height / 2);
+        
+        // Add some jitter
+        const jitter = Math.sin(time * 0.01 + index) * 2;
+        destX += jitter;
+      } else {
+        // Fallback if no text points
+        destX = target.x + (Math.random() - 0.5) * 200;
+        destY = target.y + (Math.random() - 0.5) * 200;
+      }
+    }
+
+    else if (mode === ParticleMode.AUDIO_WAVE && audioData) {
+      // Circular Audio Visualizer
+      const angle = (index / totalParticles) * Math.PI * 2;
+      const baseRadius = 100;
+      const amp = myAudioVal * 1.5; // Scale amplitude
+      const r = baseRadius + amp;
       
-      // Reset if off screen or too slow
+      destX = target.x + Math.cos(angle) * r;
+      destY = target.y + Math.sin(angle) * r;
+      
+      // Make them spin
+      const spin = time * 0.001;
+      const rx = destX - target.x;
+      const ry = destY - target.y;
+      destX = target.x + rx * Math.cos(spin) - ry * Math.sin(spin);
+      destY = target.y + rx * Math.sin(spin) + ry * Math.cos(spin);
+    }
+    
+    else if (mode === ParticleMode.NETWORK) {
+      // Slow drifting
+      destX = this.x + (Math.random() - 0.5) * 2 * speedMulti;
+      destY = this.y + (Math.random() - 0.5) * 2 * speedMulti;
+      
+      // Gentle attraction to mouse
+      const mx = target.x - this.x;
+      const my = target.y - this.y;
+      this.vx += mx * 0.0005;
+      this.vy += my * 0.0005;
+    }
+
+    else if (mode === ParticleMode.TNT) {
       if (this.y > height || (Math.abs(this.vx) < 0.1 && Math.abs(this.vy) < 0.1)) {
         this.x = target.x;
         this.y = target.y;
-        const angle = -Math.PI / 2 + (Math.random() - 0.5) * 2; // Upward cone
+        const angle = -Math.PI / 2 + (Math.random() - 0.5) * 2; 
         const force = Math.random() * 15 * speedMulti;
         this.vx = Math.cos(angle) * force;
         this.vy = Math.sin(angle) * force;
       }
-
-      this.vy += 0.5; // Gravity
-      this.vx *= 0.95; // Air resistance
-      
-      // Bounce off floor
+      this.vy += 0.5; 
+      this.vx *= 0.95; 
       if (this.y >= height && this.vy > 0) {
         this.vy *= -0.6;
         this.y = height;
       }
-
       this.x += this.vx;
       this.y += this.vy;
       return;
     }
 
-    if (mode === ParticleMode.SNOW) {
+    else if (mode === ParticleMode.SNOW) {
       if (this.y > height) {
         this.y = -20;
         this.x = Math.random() * width;
       }
       const wind = Math.sin(time * 0.001 + this.x * 0.01) * 0.5;
-      this.vx = wind + (target.x - width/2) * 0.002; // Mouse wind
+      this.vx = wind + (target.x - width/2) * 0.002; 
       this.vy = (1 + Math.random() * 2) * speedMulti;
       this.x += this.vx;
       this.y += this.vy;
@@ -227,27 +359,19 @@ class Particle {
       return;
     }
     
-    if (mode === ParticleMode.GHOST) {
-        // Wandering trail behavior
+    else if (mode === ParticleMode.GHOST) {
         const dx = target.x - this.x;
         const dy = target.y - this.y;
-        
-        // Perlin-noise-ish wandering
-        const noise = Math.sin(index + time * 0.005) * 20;
-        
         this.vx += (dx * 0.005) + (Math.cos(time * 0.002 + index) * 0.2);
         this.vy += (dy * 0.005) + (Math.sin(time * 0.002 + index) * 0.2);
-        
         this.vx *= 0.92;
         this.vy *= 0.92;
-        
         this.x += this.vx;
         this.y += this.vy;
         return;
     }
 
-    // --- Matrix & Rain (Existing) ---
-    if (mode === ParticleMode.MATRIX) {
+    else if (mode === ParticleMode.MATRIX) {
       if (this.y > height) {
         this.y = -Math.random() * 100;
         this.x = Math.floor(Math.random() * (width / 10)) * 10;
@@ -258,7 +382,7 @@ class Particle {
       return;
     }
 
-    if (mode === ParticleMode.RAIN) {
+    else if (mode === ParticleMode.RAIN) {
       if (this.y > height) {
         this.y = -10;
         this.x = Math.random() * width;
@@ -271,45 +395,32 @@ class Particle {
       return;
     }
 
-    // --- Shape Calculations ---
+    // --- Standard Shape Calculations ---
 
-    if (mode === ParticleMode.SORCERER) {
-      // Rotating Runes Circles
-      const ringIndex = index % 5; // 5 Rings
+    else if (mode === ParticleMode.SORCERER) {
+      const ringIndex = index % 5; 
       const ringRadius = 60 + ringIndex * 50;
       const dir = ringIndex % 2 === 0 ? 1 : -1;
       const speed = (0.001 + ringIndex * 0.0005) * dir * speedMulti;
       const angle = (index / (totalParticles / 5)) * Math.PI * 2 + (time * speed);
-      
       destX = target.x + Math.cos(angle) * ringRadius;
       destY = target.y + Math.sin(angle) * ringRadius;
       this.rotation = angle + Math.PI / 2;
 
     } else if (mode === ParticleMode.ANGEL) {
-      // Angel Wings
       const t = time * 0.003 * speedMulti;
       const i = index / totalParticles;
-      const side = i < 0.5 ? 1 : -1; // Right or Left wing
-      
-      // Normalized progress along wing (0 to 1)
+      const side = i < 0.5 ? 1 : -1; 
       const p = (i < 0.5 ? i * 2 : (i - 0.5) * 2);
-      
-      // Wing shape math
       const wingSpan = 300;
       const wingHeight = 250;
-      
-      // Flapping motion
       const flap = Math.sin(t) * 0.5;
-      
-      // Parametric wing curve attempt
       const r = wingSpan * p;
       const theta = p * Math.PI * 1.2;
-      
       const wx = side * (r * Math.cos(theta));
       const wy = -wingHeight * Math.sin(theta) * p + (Math.abs(wx) * flap * 0.5);
-      
       destX = target.x + wx;
-      destY = target.y + wy - 50; // Offset up slightly
+      destY = target.y + wy - 50; 
 
     } else if (mode === ParticleMode.SWARM) {
       destX = target.x + (Math.random() - 0.5) * 120;
@@ -550,13 +661,11 @@ class Particle {
 
   draw(ctx: CanvasRenderingContext2D, mode: ParticleMode) {
     if (mode === ParticleMode.TNT) {
-      // Draw rectangular debris
       ctx.fillStyle = this.currentColor;
       ctx.fillRect(this.x, this.y, this.radius * 2, this.radius * 2);
     } 
     else if ((mode === ParticleMode.SORCERER || mode === ParticleMode.SNOW) && this.char) {
-      // Draw Text/Runes
-      ctx.font = `${this.radius * 4}px monospace`; // Scale text up
+      ctx.font = `${this.radius * 4}px monospace`; 
       ctx.fillStyle = this.currentColor;
       ctx.save();
       ctx.translate(this.x, this.y);
@@ -566,14 +675,12 @@ class Particle {
       ctx.restore();
     }
     else if (mode === ParticleMode.ANGEL) {
-      // Draw Feathers (Elongated Ellipses)
       ctx.beginPath();
       ctx.ellipse(this.x, this.y, this.radius * 3, this.radius, this.rotation || 0, 0, Math.PI * 2);
       ctx.fillStyle = this.currentColor;
       ctx.fill();
     }
     else {
-      // Default Circles
       ctx.beginPath();
       ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
       ctx.fillStyle = this.currentColor;
@@ -590,6 +697,92 @@ const ParticleCanvas: React.FC<ParticleCanvasProps> = ({ config, supernovaTrigge
   const isInteracting = useRef<boolean>(false);
   const animationState = useRef<AnimationState>(AnimationState.NORMAL);
   const lastSupernova = useRef<number>(0);
+
+  // Audio refs
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const audioDataRef = useRef<Uint8Array | null>(null);
+
+  // Text scanning
+  const textPointsRef = useRef<Point[]>([]);
+
+  // Initialize Audio
+  const initAudio = async () => {
+    if (config.mode === ParticleMode.AUDIO_WAVE && !audioContextRef.current) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const source = ctx.createMediaStreamSource(stream);
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 256;
+        source.connect(analyser);
+        audioContextRef.current = ctx;
+        analyserRef.current = analyser;
+        audioDataRef.current = new Uint8Array(analyser.frequencyBinCount);
+      } catch (e) {
+        console.error("Audio permission denied or error:", e);
+      }
+    }
+  };
+
+  // Process Custom Text
+  const processText = useCallback(() => {
+    if (config.mode !== ParticleMode.TEXT || !config.customText) {
+      textPointsRef.current = [];
+      return;
+    }
+    
+    // Create offscreen canvas
+    const offCanvas = document.createElement('canvas');
+    const { width, height } = window.screen;
+    offCanvas.width = width;
+    offCanvas.height = height;
+    const ctx = offCanvas.getContext('2d');
+    if (!ctx) return;
+
+    // Draw Text
+    ctx.fillStyle = 'white';
+    ctx.font = 'bold 200px sans-serif'; // Large text
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(config.customText, width / 2, height / 2);
+
+    // Scan pixels
+    const imageData = ctx.getImageData(0, 0, width, height);
+    const data = imageData.data;
+    const points: Point[] = [];
+    
+    // Sampling rate (skip pixels for performance)
+    const step = 8; 
+
+    for (let y = 0; y < height; y += step) {
+      for (let x = 0; x < width; x += step) {
+        const i = (y * width + x) * 4;
+        if (data[i] > 128) { // If pixel is not black
+          // Center the points relative to 0,0 for easier offsetting later
+          points.push({ x: x - width/2, y: y - height/2 });
+        }
+      }
+    }
+    textPointsRef.current = points;
+  }, [config.mode, config.customText]);
+
+
+  useEffect(() => {
+    if (config.mode === ParticleMode.AUDIO_WAVE) {
+      initAudio();
+    }
+    if (config.mode === ParticleMode.TEXT) {
+      processText();
+    }
+    
+    // Re-initialize Fireworks
+    if (config.mode === ParticleMode.FIREWORKS) {
+       particlesRef.current.forEach(p => p.resetFirework(window.innerWidth, window.innerHeight));
+    }
+
+  }, [config.mode, config.customText, processText]);
+
 
   const initParticles = useCallback(() => {
     const { width, height } = window.screen;
@@ -663,10 +856,17 @@ const ParticleCanvas: React.FC<ParticleCanvasProps> = ({ config, supernovaTrigge
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    // Get Audio Data
+    if (config.mode === ParticleMode.AUDIO_WAVE && analyserRef.current && audioDataRef.current) {
+       analyserRef.current.getByteFrequencyData(audioDataRef.current);
+    }
+
     // Trail effect strength
     let trail = 0.15;
-    if (config.mode === ParticleMode.GHOST) trail = 0.05; // Longer trails
-    if (config.mode === ParticleMode.TNT) trail = 0.3; // Short trails
+    if (config.mode === ParticleMode.GHOST) trail = 0.05; 
+    if (config.mode === ParticleMode.TNT) trail = 0.3; 
+    if (config.mode === ParticleMode.NETWORK) trail = 0.4; // Clearer lines
+    if (config.mode === ParticleMode.FIREWORKS) trail = 0.2;
     if (animationState.current === AnimationState.EXPLODING) trail = 0.05;
 
     ctx.fillStyle = `rgba(0, 0, 0, ${trail})`; 
@@ -682,10 +882,38 @@ const ParticleCanvas: React.FC<ParticleCanvasProps> = ({ config, supernovaTrigge
     else if (config.mode === ParticleMode.SORCERER) shadowColor = 'rgba(0, 255, 255, 0.6)';
     else if (config.mode === ParticleMode.TNT) shadowColor = 'rgba(255, 50, 0, 0.8)';
     else if (config.mode === ParticleMode.ANGEL) shadowColor = 'rgba(255, 223, 0, 0.6)';
+    else if (config.mode === ParticleMode.NETWORK) shadowColor = 'rgba(0, 255, 255, 0.8)';
+    else if (config.mode === ParticleMode.TEXT) shadowColor = 'rgba(200, 255, 200, 0.8)';
     
     ctx.shadowColor = shadowColor;
 
     const time = Date.now();
+    const len = particlesRef.current.length;
+
+    // --- NETWORK MODE: Draw Connections first (optimization) ---
+    if (config.mode === ParticleMode.NETWORK) {
+      ctx.strokeStyle = 'rgba(0, 255, 255, 0.2)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      // Only check a subset of particles for connections to save FPS
+      // O(N^2) is too heavy for 1500 particles. 
+      // We check connections for the first 150 particles against all others
+      const connectionLimit = Math.min(len, 200); 
+      for (let i = 0; i < connectionLimit; i++) {
+        const p1 = particlesRef.current[i];
+        for (let j = i + 1; j < connectionLimit; j++) {
+           const p2 = particlesRef.current[j];
+           const dx = p1.x - p2.x;
+           const dy = p1.y - p2.y;
+           const distSq = dx*dx + dy*dy;
+           if (distSq < 10000) { // Distance < 100
+              ctx.moveTo(p1.x, p1.y);
+              ctx.lineTo(p2.x, p2.y);
+           }
+        }
+      }
+      ctx.stroke();
+    }
 
     particlesRef.current.forEach((particle, index) => {
       particle.update(
@@ -694,10 +922,12 @@ const ParticleCanvas: React.FC<ParticleCanvasProps> = ({ config, supernovaTrigge
         canvas.width,
         canvas.height,
         index,
-        particlesRef.current.length,
+        len,
         config.baseSpeed,
         animationState.current,
-        time
+        time,
+        textPointsRef.current,
+        audioDataRef.current
       );
       particle.draw(ctx, config.mode);
     });

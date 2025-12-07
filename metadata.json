@@ -1,5 +1,7 @@
 {
   "name": "Lumina Touch",
   "description": "An interactive particle physics system where light grains form shapes and flow based on touch input.",
-  "requestFramePermissions": []
+  "requestFramePermissions": [
+    "microphone"
+  ]
 }
